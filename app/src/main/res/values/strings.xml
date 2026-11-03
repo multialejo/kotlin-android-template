@@ -1,0 +1,4 @@
+<resources>
+    <!-- The name shown under the app icon on your phone. -->
+    <string name="app_name">Hello Kotlin</string>
+</resources>

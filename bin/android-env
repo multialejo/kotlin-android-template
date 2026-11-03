@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Run any command inside the Android build container, with the current folder mounted.
+#
+#   android-env ./gradlew assembleDebug     build a debug APK
+#   android-env ./gradlew test lint         run unit tests and Android lint
+#   android-env bash                        open a shell in the container
+#   android-env --usb adb devices           same, with USB access for adb
+#   android-env --rebuild                   rebuild the image (e.g. after editing the Dockerfile)
+#
+# Works from any project folder, so you can reuse it for future projects:
+#   ln -s "$PWD/bin/android-env" ~/.local/bin/android-env
+set -euo pipefail
+
+IMAGE="${ANDROID_ENV_IMAGE:-android-env:latest}"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+DOCKERFILE_DIR="$SCRIPT_DIR/../docker/android-sdk"
+
+build_image() {
+  docker build \
+    --build-arg USER_UID="$(id -u)" \
+    --build-arg USER_GID="$(id -g)" \
+    ${ANDROID_PLATFORM:+--build-arg ANDROID_PLATFORM="$ANDROID_PLATFORM"} \
+    ${BUILD_TOOLS:+--build-arg BUILD_TOOLS="$BUILD_TOOLS"} \
+    -t "$IMAGE" "$DOCKERFILE_DIR"
+}
+
+extra_args=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --rebuild) build_image; shift; [[ $# -eq 0 ]] && exit 0 ;;
+    --usb) extra_args+=(--privileged -v /dev/bus/usb:/dev/bus/usb); shift ;;
+    *) break ;;
+  esac
+done
+
+if ! docker image inspect "$IMAGE" > /dev/null 2>&1; then
+  echo "First run: building the Android environment image (takes a few minutes)..."
+  build_image
+fi
+
+tty_args=()
+[[ -t 0 && -t 1 ]] && tty_args=(-it)
+
+# Named volumes keep the Gradle download cache and the debug signing key between runs.
+# Host networking lets adb reach phones on your Wi-Fi (adb pair / adb connect).
+exec docker run --rm "${tty_args[@]}" \
+  --network host \
+  -v "$PWD":/workspace \
+  -v android-env-gradle:/home/dev/.gradle \
+  -v android-env-android:/home/dev/.android \
+  "${extra_args[@]}" \
+  "$IMAGE" "${@:-bash}"

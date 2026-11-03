@@ -1,0 +1,4 @@
+<resources>
+    <!-- Only used for the brief moment before Compose draws the screen. -->
+    <style name="Theme.HelloKotlin" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
